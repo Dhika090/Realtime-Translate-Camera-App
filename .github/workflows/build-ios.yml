@@ -1,0 +1,35 @@
+name: Build & Test iOS App
+
+on:
+  push:
+    branches: [ "main" ]
+  pull_request:
+    branches: [ "main" ]
+  workflow_dispatch: # Tombol manual "Run workflow" di GitHub
+
+jobs:
+  build-and-test:
+    runs-on: macos-latest # Komputer Mac gratis dari GitHub
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Set up Xcode
+        run: |
+          sudo xcode-select -s /Applications/Xcode_16.app/Contents/Developer
+          xcodebuild -version
+
+      - name: Run Swift Unit Tests
+        run: |
+          swift test
+
+      - name: Build Release Binary
+        run: |
+          swift build -c release
+
+      - name: Upload Build Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: RealtimeTranslate-Build
+          path: .build/
