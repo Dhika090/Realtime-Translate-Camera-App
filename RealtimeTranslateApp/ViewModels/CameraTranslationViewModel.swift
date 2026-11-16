@@ -176,9 +176,10 @@ public final class CameraTranslationViewModel: ObservableObject {
 
         // Stream video frames into OCR processing pipeline
         // Background frame filtering before dispatching to the main thread (avoids 60 FPS main-thread wakeups)
+        let ocr = self.ocrService
         cameraManager.framePublisher
-            .filter { [weak self] _ in
-                self?.ocrService.shouldProcessFrame() == true
+            .filter { _ in
+                ocr.shouldProcessFrame()
             }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] pixelBuffer in

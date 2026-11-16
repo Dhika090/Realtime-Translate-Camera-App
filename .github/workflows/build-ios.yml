@@ -1,4 +1,4 @@
-name: Build & Test iOS App
+name: Build & Package iOS App (.ipa)
 
 on:
   push:
@@ -15,30 +15,42 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Latest Xcode 16
+      - name: Select Latest Xcode
         run: |
           LATEST_XCODE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
           if [ -z "$LATEST_XCODE" ]; then
             LATEST_XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
           fi
-          echo "Found Xcode at: $LATEST_XCODE"
+          echo "Using Xcode at: $LATEST_XCODE"
           echo "DEVELOPER_DIR=$LATEST_XCODE/Contents/Developer" >> $GITHUB_ENV
 
-      - name: Verify Xcode Version
+      - name: Generate Xcode Project with XcodeGen
         run: |
-          xcodebuild -version
-          swift --version
+          if ! command -v xcodegen &> /dev/null; then
+            brew install xcodegen
+          fi
+          xcodegen generate
 
-      - name: Run Swift Unit Tests
+      - name: Build iOS App for iPhone (Release)
         run: |
-          swift test
+          xcodebuild build \
+            -project RealtimeTranslateApp.xcodeproj \
+            -scheme RealtimeTranslateApp \
+            -sdk iphoneos \
+            -configuration Release \
+            -derivedDataPath build \
+            CODE_SIGN_IDENTITY="" \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGNING_ALLOWED=NO
 
-      - name: Build Release Binary
+      - name: Package Unsigned .ipa for Sideloadly
         run: |
-          swift build -c release
+          mkdir -p Payload
+          cp -r build/Build/Products/Release-iphoneos/RealtimeTranslateApp.app Payload/
+          zip -r RealtimeTranslateApp.ipa Payload
 
-      - name: Upload Build Artifacts
+      - name: Upload .ipa Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: RealtimeTranslate-Build
-          path: .build/
+          name: RealtimeTranslate-IPA
+          path: RealtimeTranslateApp.ipa

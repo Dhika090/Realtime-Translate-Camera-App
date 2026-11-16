@@ -110,13 +110,13 @@ public struct MainCameraView: View {
             }
         })
         #endif
-        .onChange(of: viewModel.sourceLanguage) { _ in
+        .onChange(of: viewModel.sourceLanguage) { _, _ in
             updateTranslationConfiguration()
         }
-        .onChange(of: viewModel.targetLanguage) { _ in
+        .onChange(of: viewModel.targetLanguage) { _, _ in
             updateTranslationConfiguration()
         }
-        .onChange(of: viewModel.detectedDominantLanguage) { _ in
+        .onChange(of: viewModel.detectedDominantLanguage) { _, _ in
             updateTranslationConfiguration()
         }
     }
@@ -408,11 +408,11 @@ public struct MainCameraView: View {
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
 private struct TranslationTaskModifier: ViewModifier {
     let config: TranslationSession.Configuration?
-    let onSessionAvailable: (TranslationSession) -> Void
+    let onSessionAvailable: @MainActor @Sendable (TranslationSession) -> Void
 
     func body(content: Content) -> some View {
         content.translationTask(config) { session in
-            onSessionAvailable(session)
+            await onSessionAvailable(session)
         }
     }
 }

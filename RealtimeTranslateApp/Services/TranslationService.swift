@@ -55,7 +55,7 @@ public protocol TranslationSessionAdapter: Sendable {
 #if canImport(Translation)
 /// Native iOS 18 `TranslationSession` adapter wrapping Apple's batch translation API.
 @available(iOS 18.0, macOS 15.0, visionOS 2.0, *)
-public struct AppleTranslationSessionAdapter: TranslationSessionAdapter {
+public struct AppleTranslationSessionAdapter: TranslationSessionAdapter, @unchecked Sendable {
     private let session: TranslationSession
 
     public init(session: TranslationSession) {
@@ -65,7 +65,7 @@ public struct AppleTranslationSessionAdapter: TranslationSessionAdapter {
     public func translate(batch texts: [String]) async throws -> [String] {
         guard !texts.isEmpty else { return [] }
         let requests = texts.map { TranslationSession.Request(sourceText: $0) }
-        let responses = try await session.translate(batch: requests)
+        let responses = try await session.translations(from: requests)
         return responses.map(\.targetText)
     }
 }
@@ -195,7 +195,10 @@ public final class TranslationService: TranslationServiceProtocol, @unchecked Se
 
         #if canImport(Translation)
         if #available(iOS 18.0, macOS 15.0, visionOS 2.0, *) {
-            let availability = LanguageTranslationAvailability()
+            guard let source = source else {
+                return .supported
+            }
+            let availability = LanguageAvailability()
             let status = await availability.status(from: source, to: target)
             switch status {
             case .installed:

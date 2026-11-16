@@ -16,12 +16,14 @@ let package = Package(
     targets: [
         .target(
             name: "RealtimeTranslateApp",
-            path: "RealtimeTranslateApp"
+            path: "RealtimeTranslateApp",
+            exclude: ["Info.plist"]
         ),
         .testTarget(
             name: "RealtimeTranslateAppTests",
             dependencies: ["RealtimeTranslateApp"],
             path: "Tests/RealtimeTranslateAppTests"
         )
-    ]
+    ],
+    swiftLanguageModes: [.v5]
 )
