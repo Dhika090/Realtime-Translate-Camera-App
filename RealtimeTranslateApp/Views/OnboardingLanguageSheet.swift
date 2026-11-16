@@ -110,6 +110,7 @@ public struct OfflineLanguagePack: Identifiable, Equatable, Sendable {
 ///
 /// Designed to educate travelers to download required language models before embarking,
 /// ensuring 100% offline real-time camera translation without cellular or roaming data.
+@MainActor
 public struct OnboardingLanguageSheet: View {
 
     // MARK: - Properties

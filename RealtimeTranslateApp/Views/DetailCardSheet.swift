@@ -197,6 +197,7 @@ public final class TextToSpeechManager: NSObject, ObservableObject, AVSpeechSynt
 /// - One-tap copy to clipboard with temporary confirmation badge.
 /// - Text-to-speech audio pronunciation using `AVSpeechSynthesizer`.
 /// - Native iOS 18 sheet presentation styling.
+@MainActor
 public struct DetailCardSheet: View {
 
     // MARK: - Properties

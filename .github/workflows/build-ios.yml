@@ -15,17 +15,14 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Select Latest Xcode
+      - name: Verify Xcode Version
         run: |
-          LATEST_XCODE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
-          if [ -z "$LATEST_XCODE" ]; then
-            LATEST_XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
-          fi
-          echo "Using Xcode at: $LATEST_XCODE"
-          echo "DEVELOPER_DIR=$LATEST_XCODE/Contents/Developer" >> $GITHUB_ENV
+          xcodebuild -version
+          swift --version
 
       - name: Generate Xcode Project with XcodeGen
         run: |
+          rm -f Package.swift
           if ! command -v xcodegen &> /dev/null; then
             brew install xcodegen
           fi
@@ -33,20 +30,32 @@ jobs:
 
       - name: Build iOS App for iPhone (Release)
         run: |
+          set -o pipefail
           xcodebuild build \
             -project RealtimeTranslateApp.xcodeproj \
-            -scheme RealtimeTranslateApp \
+            -target RealtimeTranslateApp \
             -sdk iphoneos \
             -configuration Release \
-            -derivedDataPath build \
+            SYMROOT="$PWD/build" \
+            CODE_SIGN_STYLE=Manual \
             CODE_SIGN_IDENTITY="" \
             CODE_SIGNING_REQUIRED=NO \
-            CODE_SIGNING_ALLOWED=NO
+            CODE_SIGNING_ALLOWED=NO \
+            AD_HOC_CODE_SIGNING_ALLOWED=YES 2>&1 | tee build.log || {
+              echo "=== XCODEBUILD ERRORS ==="
+              grep -E "error:|fatal error:" build.log | head -n 30 | while IFS= read -r errline; do
+                echo "::error::$errline"
+              done
+              tail -n 30 build.log
+              exit 1
+            }
 
       - name: Package Unsigned .ipa for Sideloadly
         run: |
           mkdir -p Payload
-          cp -r build/Build/Products/Release-iphoneos/RealtimeTranslateApp.app Payload/
+          APP_PATH=$(find build -name "RealtimeTranslateApp.app" -type d | head -n 1)
+          echo "Found built app at: $APP_PATH"
+          cp -r "$APP_PATH" Payload/
           zip -r RealtimeTranslateApp.ipa Payload
 
       - name: Upload .ipa Artifact

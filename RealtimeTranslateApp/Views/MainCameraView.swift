@@ -17,6 +17,7 @@ import Translation
 /// - **Status Overlays**: Frame frozen indicator, batch translation progress pill, and non-intrusive error toasts.
 /// - **Detail Inspection Sheet**: Presents `DetailCardSheet` when an AR text badge is tapped.
 /// - **Pre-Trip Onboarding Sheet**: Presents `OnboardingLanguageSheet` for offline language pack downloads.
+@MainActor
 public struct MainCameraView: View {
 
     // MARK: - View Model

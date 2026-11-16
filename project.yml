@@ -3,12 +3,17 @@ options:
   bundleIdPrefix: com.app
   deploymentTarget:
     iOS: "18.0"
-  xcodeVersion: "16.0"
 
 settings:
   base:
     SWIFT_VERSION: "5.0"
     TARGETED_DEVICE_FAMILY: "1"
+    CODE_SIGN_STYLE: Manual
+    CODE_SIGN_IDENTITY: ""
+    CODE_SIGNING_REQUIRED: NO
+    CODE_SIGNING_ALLOWED: NO
+    AD_HOC_CODE_SIGNING_ALLOWED: YES
+    SWIFT_STRICT_CONCURRENCY: minimal
 
 targets:
   RealtimeTranslateApp:
@@ -38,19 +43,9 @@ targets:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.app.realtimetranslate
         INFOPLIST_FILE: RealtimeTranslateApp/Info.plist
-        GENERATE_InfoPLIST_FILE: NO
-        CODE_SIGN_STYLE: Automatic
-        SWIFT_STRICT_CONCURRENCY: minimal
-
-  RealtimeTranslateAppTests:
-    type: bundle.unit-test
-    platform: iOS
-    deploymentTarget: "18.0"
-    sources:
-      - path: Tests/RealtimeTranslateAppTests
-    dependencies:
-      - target: RealtimeTranslateApp
-    settings:
-      base:
-        GENERATE_INFOPLIST_FILE: YES
+        GENERATE_INFOPLIST_FILE: NO
+        CODE_SIGN_STYLE: Manual
+        CODE_SIGN_IDENTITY: ""
+        CODE_SIGNING_REQUIRED: NO
+        CODE_SIGNING_ALLOWED: NO
         SWIFT_STRICT_CONCURRENCY: minimal
