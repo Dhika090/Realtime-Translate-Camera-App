@@ -61,6 +61,9 @@ extension AppLanguage {
         isAutoDetect: true
     )
 
+    /// Shorthand alias for `.autoDetect`.
+    public static let auto = autoDetect
+
     /// Bahasa Indonesia (default target language).
     public static let indonesian = AppLanguage(
         id: "id",
