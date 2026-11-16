@@ -182,8 +182,21 @@ public final class CameraCaptureManager: NSObject, ObservableObject, AVCaptureVi
         frameSubject.eraseToAnyPublisher()
     }
 
-    /// Closure callback invoked on every captured video frame.
-    public var onFrameCaptured: (@Sendable (CVPixelBuffer) -> Void)?
+    private var _onFrameCaptured: (@Sendable (CVPixelBuffer) -> Void)?
+
+    /// Closure callback invoked on every captured video frame. Synchronized via `stateLock`.
+    public var onFrameCaptured: (@Sendable (CVPixelBuffer) -> Void)? {
+        get {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            return _onFrameCaptured
+        }
+        set {
+            stateLock.lock()
+            defer { stateLock.unlock() }
+            _onFrameCaptured = newValue
+        }
+    }
 
     /// Lock protecting active AsyncStream continuations.
     private let streamLock = NSLock()
@@ -496,10 +509,11 @@ public final class CameraCaptureManager: NSObject, ObservableObject, AVCaptureVi
             return
         }
         internalLastPixelBuffer = pixelBuffer
+        let frameCallback = _onFrameCaptured
         stateLock.unlock()
 
         // 1. Invoke closure callback
-        onFrameCaptured?(pixelBuffer)
+        frameCallback?(pixelBuffer)
 
         // 2. Publish on Combine subject
         frameSubject.send(pixelBuffer)

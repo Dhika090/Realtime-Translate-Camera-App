@@ -194,43 +194,54 @@ public protocol VisionTextRecognizerProtocol: Sendable {
         in pixelBuffer: CVPixelBuffer,
         orientation: CGImagePropertyOrientation,
         configuration: OCRConfiguration
-    ) throws -> [OCRLine]
+    ) async throws -> [OCRLine]
 
     func recognizeText(
         in cgImage: CGImage,
         orientation: CGImagePropertyOrientation,
         configuration: OCRConfiguration
-    ) throws -> [OCRLine]
+    ) async throws -> [OCRLine]
 }
 
 // MARK: - Default Vision Text Recognizer
 
 /// Native Vision framework text recognizer implementation utilizing `VNRecognizeTextRequest`.
 public struct DefaultVisionTextRecognizer: VisionTextRecognizerProtocol {
+    private let inferenceQueue = DispatchQueue(label: "com.app.ocr.inferenceQueue", qos: .userInitiated)
+
     public init() {}
 
     public func recognizeText(
         in pixelBuffer: CVPixelBuffer,
         orientation: CGImagePropertyOrientation,
         configuration: OCRConfiguration
-    ) throws -> [OCRLine] {
-        let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
-        return try performRequest(with: handler, configuration: configuration)
+    ) async throws -> [OCRLine] {
+        try await withCheckedThrowingContinuation { continuation in
+            inferenceQueue.async {
+                let handler = VNImageRequestHandler(cvPixelBuffer: pixelBuffer, orientation: orientation, options: [:])
+                Self.executeRequest(with: handler, configuration: configuration, continuation: continuation)
+            }
+        }
     }
 
     public func recognizeText(
         in cgImage: CGImage,
         orientation: CGImagePropertyOrientation,
         configuration: OCRConfiguration
-    ) throws -> [OCRLine] {
-        let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
-        return try performRequest(with: handler, configuration: configuration)
+    ) async throws -> [OCRLine] {
+        try await withCheckedThrowingContinuation { continuation in
+            inferenceQueue.async {
+                let handler = VNImageRequestHandler(cgImage: cgImage, orientation: orientation, options: [:])
+                Self.executeRequest(with: handler, configuration: configuration, continuation: continuation)
+            }
+        }
     }
 
-    private func performRequest(
+    private static func executeRequest(
         with handler: VNImageRequestHandler,
-        configuration: OCRConfiguration
-    ) throws -> [OCRLine] {
+        configuration: OCRConfiguration,
+        continuation: CheckedContinuation<[OCRLine], Error>
+    ) {
         var recognizedLines: [OCRLine] = []
         var requestError: Error?
 
@@ -267,15 +278,14 @@ public struct DefaultVisionTextRecognizer: VisionTextRecognizerProtocol {
 
         do {
             try handler.perform([request])
+            if let requestError = requestError {
+                continuation.resume(throwing: OCRError.recognitionFailed(requestError.localizedDescription))
+            } else {
+                continuation.resume(returning: recognizedLines)
+            }
         } catch {
-            throw OCRError.recognitionFailed(error.localizedDescription)
+            continuation.resume(throwing: OCRError.recognitionFailed(error.localizedDescription))
         }
-
-        if let requestError = requestError {
-            throw OCRError.recognitionFailed(requestError.localizedDescription)
-        }
-
-        return recognizedLines
     }
 }
 
@@ -371,7 +381,7 @@ public final class OCRService: OCRServiceProtocol, Sendable {
             }
         }
 
-        let lines = try recognizer.recognizeText(
+        let lines = try await recognizer.recognizeText(
             in: pixelBuffer,
             orientation: orientation,
             configuration: configuration
@@ -407,7 +417,7 @@ public final class OCRService: OCRServiceProtocol, Sendable {
             }
         }
 
-        let lines = try recognizer.recognizeText(
+        let lines = try await recognizer.recognizeText(
             in: cgImage,
             orientation: orientation,
             configuration: configuration

@@ -207,6 +207,9 @@ public struct DetailCardSheet: View {
     /// The target translation language. Defaults to Indonesian.
     public let targetLanguage: AppLanguage
 
+    /// Fallback source translation language when block metadata doesn't specify one. Defaults to auto.
+    public let fallbackSourceLanguage: AppLanguage
+
     /// Optional dismiss callback.
     public let onDismiss: (() -> Void)?
 
@@ -220,10 +223,12 @@ public struct DetailCardSheet: View {
     public init(
         block: TrackedTextBlock,
         targetLanguage: AppLanguage = .indonesian,
+        fallbackSourceLanguage: AppLanguage = .auto,
         onDismiss: (() -> Void)? = nil
     ) {
         self.block = block
         self.targetLanguage = targetLanguage
+        self.fallbackSourceLanguage = fallbackSourceLanguage
         self.onDismiss = onDismiss
     }
 
@@ -231,28 +236,39 @@ public struct DetailCardSheet: View {
     public init(
         detectedBlock: DetectedTextBlock,
         targetLanguage: AppLanguage = .indonesian,
+        fallbackSourceLanguage: AppLanguage = .auto,
         onDismiss: (() -> Void)? = nil
     ) {
         self.init(
             block: TrackedTextBlock(detectedBlock: detectedBlock),
             targetLanguage: targetLanguage,
+            fallbackSourceLanguage: fallbackSourceLanguage,
             onDismiss: onDismiss
         )
     }
 
     // MARK: - Computed Properties
 
-    /// Source language representation derived from block metadata.
+    /// Source language representation derived from block metadata or active fallback selection.
     public var sourceLanguage: AppLanguage {
         if let code = block.sourceLanguage, let match = AppLanguage.from(code: code) {
             return match
+        }
+        if !fallbackSourceLanguage.isAutoDetect {
+            return fallbackSourceLanguage
         }
         return .simplifiedChinese
     }
 
     /// Language code passed to speech synthesizer for original text.
     public var sourceVoiceLanguageCode: String {
-        block.sourceLanguage ?? "zh-CN"
+        if let code = block.sourceLanguage {
+            return code
+        }
+        if !fallbackSourceLanguage.isAutoDetect {
+            return fallbackSourceLanguage.bcp47Code
+        }
+        return "zh-CN"
     }
 
     /// Language code passed to speech synthesizer for translated text.

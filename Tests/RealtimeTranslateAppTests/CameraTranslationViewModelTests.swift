@@ -467,4 +467,66 @@ final class CameraTranslationViewModelTests: XCTestCase {
 
         XCTAssertEqual(viewModel.trackedBlocks.first?.translatedText, "Bienvenue")
     }
+
+    // MARK: - 8. Language Persistence Tests
+
+    func testLanguagePreferencesPersistenceInUserDefaults() {
+        let suiteName = "test.camera.vm.persistence.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let vm = CameraTranslationViewModel(
+            cameraManager: cameraManager,
+            ocrService: mockOCR,
+            translationService: mockTranslation,
+            languageDetectionService: languageDetector,
+            boxTracker: boxTracker,
+            userDefaults: defaults
+        )
+
+        // Set languages -> should write to UserDefaults
+        vm.setSourceLanguage(.japanese)
+        vm.setTargetLanguage(.french)
+
+        XCTAssertEqual(defaults.string(forKey: CameraTranslationViewModel.sourceLanguageDefaultsKey), "ja")
+        XCTAssertEqual(defaults.string(forKey: CameraTranslationViewModel.targetLanguageDefaultsKey), "fr")
+
+        // Initialize a new ViewModel with the same UserDefaults instance -> should restore saved preferences
+        let restoredVM = CameraTranslationViewModel(
+            cameraManager: cameraManager,
+            ocrService: mockOCR,
+            translationService: mockTranslation,
+            languageDetectionService: languageDetector,
+            boxTracker: boxTracker,
+            userDefaults: defaults
+        )
+
+        XCTAssertEqual(restoredVM.sourceLanguage, .japanese)
+        XCTAssertEqual(restoredVM.targetLanguage, .french)
+    }
+
+    func testSwapLanguagesUpdatesUserDefaults() {
+        let suiteName = "test.camera.vm.swap.\(UUID().uuidString)"
+        let defaults = UserDefaults(suiteName: suiteName)!
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        let vm = CameraTranslationViewModel(
+            cameraManager: cameraManager,
+            ocrService: mockOCR,
+            translationService: mockTranslation,
+            languageDetectionService: languageDetector,
+            boxTracker: boxTracker,
+            userDefaults: defaults
+        )
+
+        vm.setSourceLanguage(.german)
+        vm.setTargetLanguage(.italian)
+
+        vm.swapLanguages()
+
+        XCTAssertEqual(defaults.string(forKey: CameraTranslationViewModel.sourceLanguageDefaultsKey), "it")
+        XCTAssertEqual(defaults.string(forKey: CameraTranslationViewModel.targetLanguageDefaultsKey), "de")
+        XCTAssertEqual(vm.sourceLanguage, .italian)
+        XCTAssertEqual(vm.targetLanguage, .german)
+    }
 }

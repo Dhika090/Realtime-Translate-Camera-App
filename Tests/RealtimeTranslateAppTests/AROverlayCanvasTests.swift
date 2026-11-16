@@ -300,4 +300,24 @@ final class AROverlayCanvasTests: XCTestCase {
         XCTAssertEqual(sheet.block.translatedText, "Ayam Kung Pao")
         XCTAssertEqual(sheet.textToCopy, "Ayam Kung Pao")
     }
+
+    /// Tests DetailCardSheet fallback source language when block metadata doesn't specify one.
+    func testDetailCardSheetFallbackSourceLanguage() {
+        let block = TrackedTextBlock(
+            rawLines: ["Tempura"],
+            mergedText: "Tempura",
+            boundingBox: CGRect(x: 10, y: 10, width: 80, height: 20),
+            translatedText: "Gorengan Khas Jepang",
+            sourceLanguage: nil
+        )
+
+        let sheet = DetailCardSheet(
+            block: block,
+            targetLanguage: .indonesian,
+            fallbackSourceLanguage: .japanese
+        )
+
+        XCTAssertEqual(sheet.sourceLanguage.bcp47Code, "ja")
+        XCTAssertEqual(sheet.sourceVoiceLanguageCode, "ja")
+    }
 }

@@ -77,15 +77,21 @@ public final class CameraTranslationViewModel: ObservableObject {
     /// Temporal tracker smoothing bounding boxes and preserving persistent IDs.
     public let boxTracker: BoxTracker
 
+    // MARK: - Persistence Keys
+
+    public static let sourceLanguageDefaultsKey = "com.app.realtimeTranslate.sourceLanguage"
+    public static let targetLanguageDefaultsKey = "com.app.realtimeTranslate.targetLanguage"
+
     // MARK: - Internal Concurrency & Subscription State
 
+    private let userDefaults: UserDefaults
     private var cancellables = Set<AnyCancellable>()
     private var isProcessingFrame: Bool = false
     private var translationTask: Task<Void, Never>? = nil
 
     // MARK: - Initialization
 
-    /// Creates a `CameraTranslationViewModel` with injectable services.
+    /// Creates a `CameraTranslationViewModel` with injectable services and persistent language preferences.
     ///
     /// - Parameters:
     ///   - cameraManager: Camera manager instance (defaults to new `CameraCaptureManager`).
@@ -93,24 +99,46 @@ public final class CameraTranslationViewModel: ObservableObject {
     ///   - translationService: Translation service (defaults to standard `TranslationService`).
     ///   - languageDetectionService: Dominant language detection service.
     ///   - boxTracker: Temporal bounding box tracker.
-    ///   - sourceLanguage: Initial source language.
-    ///   - targetLanguage: Initial target language.
+    ///   - sourceLanguage: Optional source language (defaults to stored UserDefaults or `.auto`).
+    ///   - targetLanguage: Optional target language (defaults to stored UserDefaults or `.indonesian`).
+    ///   - userDefaults: UserDefaults instance for preference persistence (defaults to `.standard`).
     public init(
         cameraManager: CameraCaptureManager = CameraCaptureManager(),
         ocrService: OCRServiceProtocol = OCRService(),
         translationService: TranslationServiceProtocol = TranslationService(),
         languageDetectionService: LanguageDetectionService = LanguageDetectionService(),
         boxTracker: BoxTracker = BoxTracker(),
-        sourceLanguage: AppLanguage = .auto,
-        targetLanguage: AppLanguage = .indonesian
+        sourceLanguage: AppLanguage? = nil,
+        targetLanguage: AppLanguage? = nil,
+        userDefaults: UserDefaults = .standard
     ) {
         self.cameraManager = cameraManager
         self.ocrService = ocrService
         self.translationService = translationService
         self.languageDetectionService = languageDetectionService
         self.boxTracker = boxTracker
-        self.sourceLanguage = sourceLanguage
-        self.targetLanguage = targetLanguage
+        self.userDefaults = userDefaults
+
+        // Source Language resolution: explicit argument -> stored UserDefaults -> default (.auto)
+        if let explicitSource = sourceLanguage {
+            self.sourceLanguage = explicitSource
+        } else if let savedCode = userDefaults.string(forKey: Self.sourceLanguageDefaultsKey),
+                  let loaded = AppLanguage.from(code: savedCode) {
+            self.sourceLanguage = loaded
+        } else {
+            self.sourceLanguage = .auto
+        }
+
+        // Target Language resolution: explicit argument -> stored UserDefaults -> default (.indonesian)
+        if let explicitTarget = targetLanguage {
+            self.targetLanguage = explicitTarget
+        } else if let savedCode = userDefaults.string(forKey: Self.targetLanguageDefaultsKey),
+                  let loaded = AppLanguage.from(code: savedCode) {
+            self.targetLanguage = loaded
+        } else {
+            self.targetLanguage = .indonesian
+        }
+
         self.isFrozen = cameraManager.isFrozen
         self.isTorchOn = cameraManager.isTorchOn
 
@@ -147,7 +175,11 @@ public final class CameraTranslationViewModel: ObservableObject {
             .store(in: &cancellables)
 
         // Stream video frames into OCR processing pipeline
+        // Background frame filtering before dispatching to the main thread (avoids 60 FPS main-thread wakeups)
         cameraManager.framePublisher
+            .filter { [weak self] _ in
+                self?.ocrService.shouldProcessFrame() == true
+            }
             .receive(on: DispatchQueue.main)
             .sink { [weak self] pixelBuffer in
                 self?.processFrame(pixelBuffer)
@@ -159,6 +191,9 @@ public final class CameraTranslationViewModel: ObservableObject {
 
     /// Ingests a camera frame and executes the OCR, tracking, language detection, and translation pipeline.
     ///
+    /// Heavy Vision OCR and box tracking are offloaded to background threads (`Task.detached`),
+    /// keeping `@MainActor` free for smooth 60 FPS UI rendering.
+    ///
     /// - Parameter pixelBuffer: Raw CVPixelBuffer from the camera stream.
     public func processFrame(_ pixelBuffer: CVPixelBuffer) {
         // Drop frames while frozen or if another OCR cycle is actively processing
@@ -168,33 +203,45 @@ public final class CameraTranslationViewModel: ObservableObject {
 
         isProcessingFrame = true
 
-        Task { [weak self] in
-            guard let self = self else { return }
-            defer { self.isProcessingFrame = false }
+        Task.detached(priority: .userInitiated) { [weak self, ocrService, boxTracker] in
+            defer {
+                Task { @MainActor [weak self] in
+                    self?.isProcessingFrame = false
+                }
+            }
 
             do {
                 // 1. Vision OCR processing on background thread
-                let detectedBlocks = try await self.ocrService.process(pixelBuffer: pixelBuffer)
+                let detectedBlocks = try await ocrService.process(pixelBuffer: pixelBuffer)
 
                 // 2. Temporal BoxTracker association & coordinate smoothing
-                let updatedTracked = self.boxTracker.track(blocks: detectedBlocks)
+                let updatedTracked = boxTracker.track(blocks: detectedBlocks)
 
-                // 3. Dominant Language Detection (if in auto-detect mode)
-                if self.sourceLanguage.isAutoDetect {
-                    self.detectDominantLanguage(from: updatedTracked)
+                // 3. Update UI published state & trigger translations on MainActor
+                await MainActor.run { [weak self] in
+                    guard let self = self else { return }
+
+                    // Dominant Language Detection (if in auto-detect mode)
+                    if self.sourceLanguage.isAutoDetect {
+                        self.detectDominantLanguage(from: updatedTracked)
+                    }
+
+                    // 4. Update UI published state
+                    self.trackedBlocks = updatedTracked
+                    self.syncSelectedBlock(with: updatedTracked)
+
+                    // 5. Asynchronous Translation Dispatch for untranslated blocks
+                    Task { [weak self] in
+                        await self?.dispatchTranslationsIfNeeded(for: updatedTracked)
+                    }
                 }
-
-                // 4. Update UI published state
-                self.trackedBlocks = updatedTracked
-                self.syncSelectedBlock(with: updatedTracked)
-
-                // 5. Asynchronous Translation Dispatch for untranslated blocks
-                await self.dispatchTranslationsIfNeeded(for: updatedTracked)
 
             } catch OCRError.frameThrottled {
                 // Normal throttled frame drop, no error reporting needed
             } catch {
-                self.errorMessage = "OCR processing error: \(error.localizedDescription)"
+                await MainActor.run { [weak self] in
+                    self?.errorMessage = "OCR processing error: \(error.localizedDescription)"
+                }
             }
         }
     }
@@ -306,10 +353,11 @@ public final class CameraTranslationViewModel: ObservableObject {
 
     // MARK: - Language Configuration & Re-translation
 
-    /// Sets the source translation language.
+    /// Sets the source translation language and persists to UserDefaults.
     public func setSourceLanguage(_ language: AppLanguage) {
         guard sourceLanguage != language else { return }
         sourceLanguage = language
+        userDefaults.set(language.bcp47Code, forKey: Self.sourceLanguageDefaultsKey)
 
         if !language.isAutoDetect {
             detectedDominantLanguage = nil
@@ -318,15 +366,16 @@ public final class CameraTranslationViewModel: ObservableObject {
         retranslateAll()
     }
 
-    /// Sets the target translation language.
+    /// Sets the target translation language and persists to UserDefaults.
     public func setTargetLanguage(_ language: AppLanguage) {
         guard targetLanguage != language else { return }
         targetLanguage = language
+        userDefaults.set(language.bcp47Code, forKey: Self.targetLanguageDefaultsKey)
 
         retranslateAll()
     }
 
-    /// Swaps source and target languages if source is not auto-detect.
+    /// Swaps source and target languages if source is not auto-detect and persists to UserDefaults.
     public func swapLanguages() {
         if sourceLanguage.isAutoDetect {
             guard let detected = detectedDominantLanguage else { return }
@@ -339,6 +388,9 @@ public final class CameraTranslationViewModel: ObservableObject {
             sourceLanguage = targetLanguage
             targetLanguage = oldSource
         }
+
+        userDefaults.set(sourceLanguage.bcp47Code, forKey: Self.sourceLanguageDefaultsKey)
+        userDefaults.set(targetLanguage.bcp47Code, forKey: Self.targetLanguageDefaultsKey)
 
         retranslateAll()
     }
@@ -381,25 +433,31 @@ public final class CameraTranslationViewModel: ObservableObject {
         cameraManager.toggleFreezeFrame()
         self.isFrozen = cameraManager.isFrozen
 
-        // When freezing, run a high-fidelity un-throttled OCR pass on the frozen buffer
+        // When freezing, run a high-fidelity un-throttled OCR pass on the frozen buffer in background
         if self.isFrozen, let buffer = cameraManager.frozenPixelBuffer {
-            Task { [weak self] in
-                guard let self = self else { return }
+            Task.detached(priority: .userInitiated) { [weak self, ocrService, boxTracker] in
                 do {
-                    let blocks = try await self.ocrService.process(
+                    let blocks = try await ocrService.process(
                         pixelBuffer: buffer,
                         orientation: .up,
                         ignoreThrottling: true
                     )
-                    let tracked = self.boxTracker.track(blocks: blocks)
-                    if self.sourceLanguage.isAutoDetect {
-                        self.detectDominantLanguage(from: tracked)
+                    let tracked = boxTracker.track(blocks: blocks)
+                    await MainActor.run { [weak self] in
+                        guard let self = self else { return }
+                        if self.sourceLanguage.isAutoDetect {
+                            self.detectDominantLanguage(from: tracked)
+                        }
+                        self.trackedBlocks = tracked
+                        self.syncSelectedBlock(with: tracked)
+                        Task { [weak self] in
+                            await self?.dispatchTranslationsIfNeeded(for: tracked)
+                        }
                     }
-                    self.trackedBlocks = tracked
-                    self.syncSelectedBlock(with: tracked)
-                    await self.dispatchTranslationsIfNeeded(for: tracked)
                 } catch {
-                    self.errorMessage = "Freeze frame OCR failed: \(error.localizedDescription)"
+                    await MainActor.run { [weak self] in
+                        self?.errorMessage = "Freeze frame OCR failed: \(error.localizedDescription)"
+                    }
                 }
             }
         }

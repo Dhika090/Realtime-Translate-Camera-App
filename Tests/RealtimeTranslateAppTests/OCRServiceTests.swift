@@ -19,7 +19,7 @@ final class MockVisionTextRecognizer: VisionTextRecognizerProtocol, @unchecked S
         in pixelBuffer: CVPixelBuffer,
         orientation: CGImagePropertyOrientation,
         configuration: OCRConfiguration
-    ) throws -> [OCRLine] {
+    ) async throws -> [OCRLine] {
         callCount += 1
         lastOrientation = orientation
         lastConfiguration = configuration
@@ -34,7 +34,7 @@ final class MockVisionTextRecognizer: VisionTextRecognizerProtocol, @unchecked S
         in cgImage: CGImage,
         orientation: CGImagePropertyOrientation,
         configuration: OCRConfiguration
-    ) throws -> [OCRLine] {
+    ) async throws -> [OCRLine] {
         callCount += 1
         lastOrientation = orientation
         lastConfiguration = configuration

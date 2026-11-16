@@ -82,6 +82,9 @@ public struct MainCameraView: View {
                 DetailCardSheet(
                     block: selected,
                     targetLanguage: viewModel.targetLanguage,
+                    fallbackSourceLanguage: viewModel.sourceLanguage.isAutoDetect
+                        ? (viewModel.detectedDominantLanguage ?? .auto)
+                        : viewModel.sourceLanguage,
                     onDismiss: {
                         viewModel.clearSelection()
                     }
