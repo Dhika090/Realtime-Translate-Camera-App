@@ -30,9 +30,14 @@ public struct MainCameraView: View {
 
     // MARK: - Initialization
 
-    /// Creates a `MainCameraView` with an existing or new `CameraTranslationViewModel`.
-    public init(viewModel: CameraTranslationViewModel = CameraTranslationViewModel()) {
+    /// Creates a `MainCameraView` with an existing `CameraTranslationViewModel`.
+    public init(viewModel: CameraTranslationViewModel) {
         self._viewModel = StateObject(wrappedValue: viewModel)
+    }
+
+    /// Creates a `MainCameraView` with a new default `CameraTranslationViewModel`.
+    public init() {
+        self._viewModel = StateObject(wrappedValue: CameraTranslationViewModel())
     }
 
     // MARK: - Body
