@@ -9,23 +9,25 @@ on:
 
 jobs:
   build-and-test:
-    runs-on: macos-14 # Mac Apple Silicon runner
+    runs-on: macos-latest
 
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Set up Xcode 16
+      - name: Select Latest Xcode 16
         run: |
-          # Cari Xcode 16 versi berapa pun yang terpasang di runner
-          XCODE_16=$(find /Applications -maxdepth 1 -name "Xcode_16*.app" | sort -r | head -n 1)
-          if [ -n "$XCODE_16" ]; then
-            echo "Menggunakan: $XCODE_16"
-            sudo xcode-select -s "$XCODE_16/Contents/Developer"
-          else
-            echo "Xcode 16 tidak ditemukan secara spesifik, menggunakan default runner:"
+          LATEST_XCODE=$(ls -d /Applications/Xcode_16*.app 2>/dev/null | sort -V | tail -n 1)
+          if [ -z "$LATEST_XCODE" ]; then
+            LATEST_XCODE=$(ls -d /Applications/Xcode*.app 2>/dev/null | sort -V | tail -n 1)
           fi
+          echo "Found Xcode at: $LATEST_XCODE"
+          echo "DEVELOPER_DIR=$LATEST_XCODE/Contents/Developer" >> $GITHUB_ENV
+
+      - name: Verify Xcode Version
+        run: |
           xcodebuild -version
+          swift --version
 
       - name: Run Swift Unit Tests
         run: |
